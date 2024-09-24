@@ -69,6 +69,7 @@ class CowDataActivity : ComponentActivity() {
             var filteredCowsList by remember { mutableStateOf(listOf<Triple<String, List<InseminationRecord>, Boolean>>()) }
 
             fun refreshCowData() {
+                println("refresh data çalıştı!");
                 fetchCowData { data ->
                     cowsList = data
                     filteredCowsList = data
@@ -102,8 +103,9 @@ class CowDataActivity : ComponentActivity() {
                 Button(
                     onClick = {
                         if (isValidDate(inseminationDate)) {
-                            addCowData(earTag, inseminationDate)
-                            refreshCowData()  // Veriyi kaydettikten sonra listeyi yeniliyoruz
+                            addCowData(earTag, inseminationDate) {
+                                refreshCowData()  // Veri eklendikten sonra listeyi yeniliyoruz
+                            }
                         } else {
                             Toast.makeText(this@CowDataActivity, "Geçerli bir tarih girin (gg.aa.yyyy)", Toast.LENGTH_SHORT).show()
                         }
@@ -129,7 +131,6 @@ class CowDataActivity : ComponentActivity() {
                     label = { Text("Küpe Numarasına Göre Ara") },
                     modifier = Modifier.fillMaxWidth()
                 )
-
                 println(searchQuery.uppercase());
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -173,7 +174,7 @@ class CowDataActivity : ComponentActivity() {
         }
     }
 
-    private fun addCowData(earTag: String, inseminationDateStr: String) {
+    private fun addCowData(earTag: String, inseminationDateStr: String, onComplete: () -> Unit) {
         val currentUser = auth.currentUser
 
         if (currentUser != null) {
@@ -192,7 +193,9 @@ class CowDataActivity : ComponentActivity() {
 
                         if (lastStatus == "Başarısız") {
                             // Yeni tohumlama kaydedilebilir
-                            saveNewInseminationRecord(cowDocument.id, earTag, inseminationDateStr)
+                            saveNewInseminationRecord(cowDocument.id, earTag, inseminationDateStr) {
+                                onComplete()  // İşlem tamamlandıktan sonra listeyi yeniliyoruz
+                            }
                         } else {
                             Toast.makeText(this, "Bu küpe numarasıyla daha önce başarılı bir tohumlama yapılmış!", Toast.LENGTH_SHORT).show()
                         }
@@ -218,6 +221,7 @@ class CowDataActivity : ComponentActivity() {
                                 .add(cow)
                                 .addOnSuccessListener {
                                     Toast.makeText(this, "Veri başarıyla kaydedildi", Toast.LENGTH_SHORT).show()
+                                    onComplete()  // Veri eklendikten sonra listeyi yeniliyoruz
                                 }
                                 .addOnFailureListener {
                                     Toast.makeText(this, "Veri kaydedilemedi", Toast.LENGTH_SHORT).show()
@@ -230,6 +234,7 @@ class CowDataActivity : ComponentActivity() {
                 }
         }
     }
+
 
     // Verileri gösterme işlemi
     private fun fetchCowData(callback: (List<Triple<String, List<InseminationRecord>, Boolean>>) -> Unit) {
@@ -266,7 +271,8 @@ class CowDataActivity : ComponentActivity() {
     private fun saveNewInseminationRecord(
         documentId: String,
         earTag: String,
-        inseminationDateStr: String
+        inseminationDateStr: String,
+        onComplete: () -> Unit
     ) {
         val dateFormat = SimpleDateFormat("dd.MM.yyyy", Locale("tr", "TR"))
         val inseminationDate: Date? = dateFormat.parse(inseminationDateStr)
@@ -281,12 +287,14 @@ class CowDataActivity : ComponentActivity() {
                 .update("insemination_records", FieldValue.arrayUnion(newRecord))
                 .addOnSuccessListener {
                     Toast.makeText(this, "Yeni tohumlama kaydedildi", Toast.LENGTH_SHORT).show()
+                    onComplete()  // Veri güncellendikten sonra listeyi yeniliyoruz
                 }
                 .addOnFailureListener {
                     Toast.makeText(this, "Tohumlama kaydedilemedi", Toast.LENGTH_SHORT).show()
                 }
         }
     }
+
 
     // Tohumlama başarısız işaretleme
     private fun markInseminationFailed(earTag: String, record: InseminationRecord, onComplete: () -> Unit) {
