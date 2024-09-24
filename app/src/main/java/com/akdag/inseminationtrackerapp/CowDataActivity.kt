@@ -120,7 +120,8 @@ class CowDataActivity : ComponentActivity() {
                     onValueChange = { query ->
                         searchQuery = query
                         filteredCowsList = if (query.isNotEmpty()) {
-                            cowsList.filter { it.first.contains(query) }
+                            // Küpe numarası ve sorguyu küçük harfe çeviriyoruz
+                            cowsList.filter { it.first.lowercase(Locale.getDefault()).contains(query.lowercase(Locale.getDefault())) }
                         } else {
                             cowsList
                         }
@@ -128,6 +129,7 @@ class CowDataActivity : ComponentActivity() {
                     label = { Text("Küpe Numarasına Göre Ara") },
                     modifier = Modifier.fillMaxWidth()
                 )
+
                 println(searchQuery.uppercase());
 
                 Spacer(modifier = Modifier.height(16.dp))
