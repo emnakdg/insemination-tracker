@@ -29,6 +29,12 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import android.app.DatePickerDialog
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.platform.LocalContext
+import android.util.Log
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 
 class CowDataActivity : ComponentActivity() {
 
@@ -50,9 +56,66 @@ class CowDataActivity : ComponentActivity() {
         }
     }
 
+    // Takvim Seçimi İçin Buton
+    @Composable
+    fun DatePickerButton(
+        label: String,
+        selectedDate: String,
+        onDateSelected: (String) -> Unit
+    ) {
+        val context = LocalContext.current
+        val calendar = Calendar.getInstance()
+
+        val year = calendar.get(Calendar.YEAR)
+        val month = calendar.get(Calendar.MONTH)
+        val day = calendar.get(Calendar.DAY_OF_MONTH)
+
+        var showDatePicker by remember { mutableStateOf(false) }
+
+        // Butona tıkladığında takvimi gösterir
+        Button(onClick = {
+            showDatePicker = true
+        }) {
+            Text("Tarih Seç")
+        }
+
+        // Tarih seçildiğinde bu DatePickerDialog gösterilecek
+        if (showDatePicker) {
+            DatePickerDialog(
+                context,
+                { _, selectedYear: Int, selectedMonth: Int, selectedDayOfMonth: Int ->
+                    val formattedDate = String.format(
+                        "%02d.%02d.%04d", selectedDayOfMonth, selectedMonth + 1, selectedYear
+                    )
+                    onDateSelected(formattedDate)
+                    showDatePicker = false // Takvimi kapat
+                },
+                year,
+                month,
+                day
+            ).apply {
+                setOnCancelListener {
+                    // İptal edildiğinde showDatePicker'ı false olarak ayarla
+                    showDatePicker = false
+                }
+            }.show()
+        }
+
+        // Seçilen tarih için OutlinedTextField oluşturuluyor
+        Spacer(modifier = Modifier.height(16.dp))
+
+        OutlinedTextField(
+            value = selectedDate,
+            onValueChange = {},
+            label = { Text("Seçilen Tarih") },
+            readOnly = true, // Kullanıcı doğrudan yazamaz
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Register the notification channel when the app starts
+        // Bildirim kanalı kontrolü ve izin isteme
         checkAndRequestNotificationPermission()
         NotificationHelper.createNotificationChannel(this)
 
@@ -68,8 +131,8 @@ class CowDataActivity : ComponentActivity() {
             var searchQuery by remember { mutableStateOf("") }
             var filteredCowsList by remember { mutableStateOf(listOf<Triple<String, List<InseminationRecord>, Boolean>>()) }
 
+            // Veri yenileme fonksiyonu
             fun refreshCowData() {
-                println("refresh data çalıştı!");
                 fetchCowData { data ->
                     cowsList = data
                     filteredCowsList = data
@@ -81,6 +144,7 @@ class CowDataActivity : ComponentActivity() {
                     .fillMaxSize()
                     .padding(16.dp)
             ) {
+                // Küpe numarası girişi
                 TextField(
                     value = earTag,
                     onValueChange = { earTag = it },
@@ -90,11 +154,11 @@ class CowDataActivity : ComponentActivity() {
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                TextField(
-                    value = inseminationDate,
-                    onValueChange = { inseminationDate = it },
-                    label = { Text("Tohumlama Tarihi (gg.aa.yyyy)") },
-                    modifier = Modifier.fillMaxWidth()
+                // Takvim seçimi için DatePickerButton
+                DatePickerButton(
+                    label = "Tohumlama Tarihi (gg.aa.yyyy)",
+                    selectedDate = inseminationDate, // Seçilen tarihi buraya geçiriyoruz
+                    onDateSelected = { inseminationDate = it } // Tarih seçildiğinde inseminationDate güncelleniyor
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -104,7 +168,7 @@ class CowDataActivity : ComponentActivity() {
                     onClick = {
                         if (isValidDate(inseminationDate)) {
                             addCowData(earTag, inseminationDate) {
-                                refreshCowData()  // Veri eklendikten sonra listeyi yeniliyoruz
+                                refreshCowData()
                             }
                         } else {
                             Toast.makeText(this@CowDataActivity, "Geçerli bir tarih girin (gg.aa.yyyy)", Toast.LENGTH_SHORT).show()
@@ -117,12 +181,12 @@ class CowDataActivity : ComponentActivity() {
 
                 Spacer(modifier = Modifier.height(16.dp))
 
+                // Arama bölmesi
                 TextField(
                     value = searchQuery,
                     onValueChange = { query ->
                         searchQuery = query
                         filteredCowsList = if (query.isNotEmpty()) {
-                            // Küpe numarası ve sorguyu küçük harfe çeviriyoruz
                             cowsList.filter { it.first.lowercase(Locale.getDefault()).contains(query.lowercase(Locale.getDefault())) }
                         } else {
                             cowsList
@@ -131,32 +195,33 @@ class CowDataActivity : ComponentActivity() {
                     label = { Text("Küpe Numarasına Göre Ara") },
                     modifier = Modifier.fillMaxWidth()
                 )
-                println(searchQuery.uppercase());
 
                 Spacer(modifier = Modifier.height(16.dp))
+
+                // Verileri göster butonu
                 Button(
-                    onClick = { refreshCowData() },  // Manuel olarak da verileri yenilemek için
+                    onClick = { refreshCowData() },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Verileri Göster")
                 }
 
+                // Verilerin gösterildiği alan
                 CowDataDisplay(
                     cowsList = filteredCowsList,
                     onDelete = { earTag ->
-                        deleteCowData(earTag) { refreshCowData() }  // Silme işleminden sonra listeyi yeniliyoruz
+                        deleteCowData(earTag) { refreshCowData() }
                     },
                     onMarkFailed = { earTag, record ->
-                        markInseminationFailed(earTag, record) { refreshCowData() }  // Başarısız işaretlendiğinde listeyi yeniliyoruz
+                        markInseminationFailed(earTag, record) { refreshCowData() }
                     },
                     onMarkSuccessful = { earTag, record ->
-                        markInseminationSuccessful(earTag, record) { refreshCowData() }  // Başarılı işaretlendiğinde listeyi yeniliyoruz
+                        markInseminationSuccessful(earTag, record) { refreshCowData() }
                     }
                 )
             }
         }
     }
-
 
     // InseminationRecord veri modeli
     data class InseminationRecord(val date: Date, val status: String)
@@ -234,7 +299,6 @@ class CowDataActivity : ComponentActivity() {
                 }
         }
     }
-
 
     // Verileri gösterme işlemi
     private fun fetchCowData(callback: (List<Triple<String, List<InseminationRecord>, Boolean>>) -> Unit) {
@@ -331,6 +395,7 @@ class CowDataActivity : ComponentActivity() {
                                 // Schedule the notification after 195 days
                                 val delayInMillis = dryingOffDate.time - System.currentTimeMillis()
                                 // val delayInMillis = TimeUnit.MINUTES.toMillis(1)  // Test için 1 dakika gecikme
+                                // val delayInMillis = dryingOffDate.time - System.currentTimeMillis()  // orjinal 195
                                 enqueueCowBirthReminder(earTag, delayInMillis)
 
                                 Toast.makeText(this, "Tohumlama başarılı olarak işaretlendi", Toast.LENGTH_SHORT).show()
