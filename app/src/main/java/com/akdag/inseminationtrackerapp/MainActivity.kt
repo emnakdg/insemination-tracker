@@ -1,8 +1,9 @@
 package com.akdag.inseminationtrackerapp
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
@@ -12,32 +13,49 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.messaging.FirebaseMessaging
 
+@OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
 
     private lateinit var auth: FirebaseAuth
 
-    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
         // Firebase Auth instance
         auth = FirebaseAuth.getInstance()
+
+        // SharedPreferences kullanımı
+        val sharedPreferences = getSharedPreferences("UserPrefs", Context.MODE_PRIVATE)
+
+        // Otomatik giriş için kontrol
+        val savedEmail = sharedPreferences.getString("email", null)
+        val savedPassword = sharedPreferences.getString("password", null)
+
+        if (savedEmail != null && savedPassword != null) {
+            // Eğer email ve şifre kaydedildiyse, otomatik giriş yap
+            loginUser(savedEmail, savedPassword) { success, error ->
+                if (success) {
+                    navigateToHomePage()
+                } else {
+                    showMessage("Giriş başarısız: $error")
+                }
+            }
+        }
 
         setContent {
             var email by remember { mutableStateOf("") }
             var password by remember { mutableStateOf("") }
             var passwordVisible by remember { mutableStateOf(false) }
-            var errorMessage by remember { mutableStateOf("") }
-            var successMessage by remember { mutableStateOf("") }
+            var rememberMe by remember { mutableStateOf(false) } // Beni hatırla seçeneği
 
-            // UI yapısı
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -86,17 +104,32 @@ class MainActivity : ComponentActivity() {
                     )
                 )
 
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically // Dikey olarak ortalama
+                ) {
+                    Checkbox(
+                        checked = rememberMe,
+                        onCheckedChange = { rememberMe = it }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "Beni Hatırla")
+                }
+
                 // Giriş yap butonu
                 Button(
                     onClick = {
                         loginUser(email, password) { success, error ->
                             if (success) {
-                                // Başarılı giriş, verileri yönetme ekranına geçiş
-                                val intent = Intent(this@MainActivity, CowDataActivity::class.java)
-                                startActivity(intent)
-                                finish()
+                                if (rememberMe) {
+                                    // Eğer "Beni Hatırla" seçiliyse, kullanıcı bilgilerini kaydet
+                                    sharedPreferences.edit().putString("email", email).putString("password", password).apply()
+                                }
+                                navigateToHomePage()
                             } else {
-                                errorMessage = error ?: "Giriş başarısız!"
+                                showMessage("Giriş başarısız: $error")
                             }
                         }
                     },
@@ -111,15 +144,8 @@ class MainActivity : ComponentActivity() {
                 // Kayıt ol butonu
                 Button(
                     onClick = {
-                        registerUser(email, password) { success, error ->
-                            if (success) {
-                                successMessage = "Kayıt başarılı! Şimdi giriş yapabilirsiniz."
-                                errorMessage = ""
-                            } else {
-                                errorMessage = error ?: "Kayıt başarısız!"
-                                successMessage = ""
-                            }
-                        }
+                        val intent = Intent(this@MainActivity, RegisterActivity::class.java)
+                        startActivity(intent)
                     },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -128,22 +154,7 @@ class MainActivity : ComponentActivity() {
                 ) {
                     Text("Kayıt Ol", color = MaterialTheme.colorScheme.onPrimary)
                 }
-
-                // Hata mesajı gösterimi
-                if (errorMessage.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(text = errorMessage, color = MaterialTheme.colorScheme.error)
-                }
-
-                // Başarı mesajı gösterimi
-                if (successMessage.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(text = successMessage, color = MaterialTheme.colorScheme.primary)
-                }
             }
-
-            // FCM Token'ı almak
-            getFCMToken()
         }
     }
 
@@ -152,38 +163,21 @@ class MainActivity : ComponentActivity() {
         auth.signInWithEmailAndPassword(email, password)
             .addOnCompleteListener(this) { task ->
                 if (task.isSuccessful) {
-                    Log.d("Login", "Giriş başarılı")
                     callback(true, null)
                 } else {
-                    Log.w("Login", "Giriş başarısız", task.exception)
                     callback(false, task.exception?.message)
                 }
             }
     }
 
-    // Kayıt işlemi
-    private fun registerUser(email: String, password: String, callback: (Boolean, String?) -> Unit) {
-        auth.createUserWithEmailAndPassword(email, password)
-            .addOnCompleteListener(this) { task ->
-                if (task.isSuccessful) {
-                    Log.d("Register", "Kayıt başarılı")
-                    callback(true, null)
-                } else {
-                    Log.w("Register", "Kayıt başarısız", task.exception)
-                    callback(false, task.exception?.message)
-                }
-            }
+    // Başarılı giriş sonrası ana sayfaya geçiş
+    private fun navigateToHomePage() {
+        val intent = Intent(this@MainActivity, HomeActivity::class.java)
+        startActivity(intent)
+        finish()
     }
 
-    // FCM Token alma işlemi
-    private fun getFCMToken() {
-        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-            if (!task.isSuccessful) {
-                Log.w("FCM", "FCM token alınamadı", task.exception)
-                return@addOnCompleteListener
-            }
-            val token = task.result
-            Log.d("FCM", "FCM Token: $token")
-        }
+    private fun showMessage(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
 }

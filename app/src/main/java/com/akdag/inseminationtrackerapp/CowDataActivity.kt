@@ -30,6 +30,9 @@ import android.os.Build
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import android.app.DatePickerDialog
+import android.content.Intent
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.ui.platform.LocalContext
 
 class CowDataActivity : ComponentActivity() {
@@ -52,6 +55,150 @@ class CowDataActivity : ComponentActivity() {
         }
     }
 
+    @OptIn(ExperimentalMaterial3Api::class)
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        checkAndRequestNotificationPermission()
+
+        auth = FirebaseAuth.getInstance()
+
+        setContent {
+            CowDataScreen()
+        }
+    }
+
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Composable
+    fun CowDataScreen() {
+        val context = LocalContext.current // Composable içinde context almak için
+
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("Tohumlama İşlemleri") },
+                    navigationIcon = {
+                        IconButton(onClick = {
+                            // Anasayfaya yönlendirme işlemi
+                            val intent = Intent(context, HomeActivity::class.java)
+                            context.startActivity(intent)  // Intent ile activity başlatma
+                        }) {
+                            Icon(Icons.Filled.Home, contentDescription = "Anasayfa")
+                        }
+                    }
+                )
+            },
+            content = { paddingValues ->
+                CowDataForm(paddingValues)
+            }
+        )
+    }
+
+    @Composable
+    fun CowDataForm(paddingValues: PaddingValues) {
+        var earTag by remember { mutableStateOf("") }
+        var inseminationDate by remember { mutableStateOf("") }
+        var cowsList by remember { mutableStateOf(listOf<Triple<String, List<InseminationRecord>, Boolean>>()) }
+
+        // Arama bölmesi için durum
+        var searchQuery by remember { mutableStateOf("") }
+        var filteredCowsList by remember { mutableStateOf(listOf<Triple<String, List<InseminationRecord>, Boolean>>()) }
+        val context = LocalContext.current
+
+        // Veri yenileme fonksiyonu
+        fun refreshCowData() {
+            fetchCowData { data ->
+                cowsList = data
+                filteredCowsList = data
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues) // Scaffold'dan gelen paddingValues burada kullanılıyor
+                .padding(16.dp)
+        ) {
+            // Küpe numarası girişi
+            TextField(
+                value = earTag,
+                onValueChange = { earTag = it },
+                label = { Text("Küpe Numarası") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Takvim seçimi için DatePickerButton
+            DatePickerButton(
+                label = "Tohumlama Tarihi (gg.aa.yyyy)",
+                selectedDate = inseminationDate,
+                onDateSelected = { inseminationDate = it }
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Veri ekleme butonu
+            Button(
+                onClick = {
+                    if (isValidDate(inseminationDate)) {
+                        addCowData(earTag, inseminationDate) {
+                            refreshCowData()
+                        }
+                    } else {
+
+                        Toast.makeText(context, "Geçerli bir tarih girin (gg.aa.yyyy)", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Veriyi Kaydet")
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+
+
+            // Arama bölmesi
+            TextField(
+                value = searchQuery,
+                onValueChange = { query ->
+                    searchQuery = query
+                    filteredCowsList = if (query.isNotEmpty()) {
+                        cowsList.filter { it.first.lowercase(Locale.getDefault()).contains(query.lowercase(Locale.getDefault())) }
+                    } else {
+                        cowsList
+                    }
+                },
+                label = { Text("Küpe Numarasına Göre Ara") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Verileri göster butonu
+            Button(
+                onClick = { refreshCowData() },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Verileri Göster")
+            }
+
+            // Verilerin gösterildiği alan
+            CowDataDisplay(
+                cowsList = filteredCowsList,
+                onDelete = { earTag ->
+                    deleteCowData(earTag) { refreshCowData() }
+                },
+                onMarkFailed = { earTag, record ->
+                    markInseminationFailed(earTag, record) { refreshCowData() }
+                },
+                onMarkSuccessful = { earTag, record ->
+                    markInseminationSuccessful(earTag, record) { refreshCowData() }
+                }
+            )
+        }
+    }
+
     // Takvim Seçimi İçin Buton
     @Composable
     fun DatePickerButton(
@@ -69,154 +216,33 @@ class CowDataActivity : ComponentActivity() {
         var showDatePicker by remember { mutableStateOf(false) }
 
 
-        // Seçilen tarih için OutlinedTextField oluşturuluyor
+
         Spacer(modifier = Modifier.height(16.dp))
 
         OutlinedTextField(
             value = selectedDate,
             onValueChange = {},
             label = { Text("Seçilen Tarih") },
-            readOnly = true, // Kullanıcı doğrudan yazamaz
+            readOnly = true,
             modifier = Modifier.fillMaxWidth()
         )
 
-        // Butona tıkladığında takvimi gösterir
-        Button(onClick = {
-            showDatePicker = true
-        }) {
+        Button(onClick = { showDatePicker = true }) {
             Text("Tarih Seç")
         }
 
-        // Tarih seçildiğinde bu DatePickerDialog gösterilecek
         if (showDatePicker) {
             DatePickerDialog(
                 context,
                 { _, selectedYear: Int, selectedMonth: Int, selectedDayOfMonth: Int ->
-                    val formattedDate = String.format(
-                        "%02d.%02d.%04d", selectedDayOfMonth, selectedMonth + 1, selectedYear
-                    )
+                    val formattedDate = String.format("%02d.%02d.%04d", selectedDayOfMonth, selectedMonth + 1, selectedYear)
                     onDateSelected(formattedDate)
-                    showDatePicker = false // Takvimi kapat
+                    showDatePicker = false
                 },
                 year,
                 month,
                 day
-            ).apply {
-                setOnCancelListener {
-                    // İptal edildiğinde showDatePicker'ı false olarak ayarla
-                    showDatePicker = false
-                }
-            }.show()
-        }
-    }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        // Bildirim kanalı kontrolü ve izin isteme
-        checkAndRequestNotificationPermission()
-        NotificationHelper.createNotificationChannel(this)
-
-        // Firebase Auth instance
-        auth = FirebaseAuth.getInstance()
-
-        setContent {
-            var earTag by remember { mutableStateOf("") }
-            var inseminationDate by remember { mutableStateOf("") }
-            var cowsList by remember { mutableStateOf(listOf<Triple<String, List<InseminationRecord>, Boolean>>()) }
-
-            // Arama bölmesi için durum
-            var searchQuery by remember { mutableStateOf("") }
-            var filteredCowsList by remember { mutableStateOf(listOf<Triple<String, List<InseminationRecord>, Boolean>>()) }
-
-            // Veri yenileme fonksiyonu
-            fun refreshCowData() {
-                fetchCowData { data ->
-                    cowsList = data
-                    filteredCowsList = data
-                }
-            }
-
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp)
-            ) {
-                // Küpe numarası girişi
-                TextField(
-                    value = earTag,
-                    onValueChange = { earTag = it },
-                    label = { Text("Küpe Numarası") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Takvim seçimi için DatePickerButton
-                DatePickerButton(
-                    label = "Tohumlama Tarihi (gg.aa.yyyy)",
-                    selectedDate = inseminationDate, // Seçilen tarihi buraya geçiriyoruz
-                    onDateSelected = { inseminationDate = it } // Tarih seçildiğinde inseminationDate güncelleniyor
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Veri ekleme
-                Button(
-                    onClick = {
-                        if (isValidDate(inseminationDate)) {
-                            addCowData(earTag, inseminationDate) {
-                                refreshCowData()
-                            }
-                        } else {
-                            Toast.makeText(this@CowDataActivity, "Geçerli bir tarih girin (gg.aa.yyyy)", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Veriyi Kaydet")
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Arama bölmesi
-                TextField(
-                    value = searchQuery,
-                    onValueChange = { query ->
-                        searchQuery = query
-                        filteredCowsList = if (query.isNotEmpty()) {
-                            cowsList.filter { it.first.lowercase(Locale.getDefault()).contains(query.lowercase(Locale.getDefault())) }
-                        } else {
-                            cowsList
-                        }
-                    },
-                    label = { Text("Küpe Numarasına Göre Ara") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Verileri göster butonu
-                Button(
-                    onClick = { refreshCowData() },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Verileri Göster")
-                }
-
-                // Verilerin gösterildiği alan
-                CowDataDisplay(
-                    cowsList = filteredCowsList,
-                    onDelete = { earTag ->
-                        deleteCowData(earTag) { refreshCowData() }
-                    },
-                    onMarkFailed = { earTag, record ->
-                        markInseminationFailed(earTag, record) { refreshCowData() }
-                    },
-                    onMarkSuccessful = { earTag, record ->
-                        markInseminationSuccessful(earTag, record) { refreshCowData() }
-                    }
-                )
-            }
+            ).show()
         }
     }
 
@@ -226,16 +252,16 @@ class CowDataActivity : ComponentActivity() {
     // Tarih doğrulama fonksiyonu
     private fun isValidDate(dateStr: String): Boolean {
         val dateFormat = SimpleDateFormat("dd.MM.yyyy", Locale("tr", "TR"))
-        dateFormat.isLenient = false // Sert tarih doğrulaması yapılacak
+        dateFormat.isLenient = false
         return try {
             val date = dateFormat.parse(dateStr)
-            // Eğer tarih gelecekte ise de geçerli sayılmayacak
             date != null && date.before(Date())
         } catch (e: ParseException) {
             false
         }
     }
 
+    // Veri ekleme işlemi
     private fun addCowData(earTag: String, inseminationDateStr: String, onComplete: () -> Unit) {
         val currentUser = auth.currentUser
 
@@ -246,7 +272,7 @@ class CowDataActivity : ComponentActivity() {
                 .get()
                 .addOnSuccessListener { documents ->
                     if (!documents.isEmpty) {
-                        val cowDocument = documents.first()  // Var olan belgeyi alıyoruz
+                        val cowDocument = documents.first()
                         val cowData = cowDocument.data
                         val inseminationRecords = cowData["insemination_records"] as? List<Map<String, Any>>
 
@@ -254,15 +280,13 @@ class CowDataActivity : ComponentActivity() {
                         val lastStatus = lastRecord?.get("status") as? String
 
                         if (lastStatus == "Başarısız") {
-                            // Yeni tohumlama kaydedilebilir
                             saveNewInseminationRecord(cowDocument.id, earTag, inseminationDateStr) {
-                                onComplete()  // İşlem tamamlandıktan sonra listeyi yeniliyoruz
+                                onComplete()
                             }
                         } else {
                             Toast.makeText(this, "Bu küpe numarasıyla daha önce başarılı bir tohumlama yapılmış!", Toast.LENGTH_SHORT).show()
                         }
                     } else {
-                        // Yeni inek kaydı oluşturulabilir
                         val dateFormat = SimpleDateFormat("dd.MM.yyyy", Locale("tr", "TR"))
                         val inseminationDate: Date? = dateFormat.parse(inseminationDateStr)
 
@@ -283,16 +307,13 @@ class CowDataActivity : ComponentActivity() {
                                 .add(cow)
                                 .addOnSuccessListener {
                                     Toast.makeText(this, "Veri başarıyla kaydedildi", Toast.LENGTH_SHORT).show()
-                                    onComplete()  // Veri eklendikten sonra listeyi yeniliyoruz
+                                    onComplete()
                                 }
                                 .addOnFailureListener {
                                     Toast.makeText(this, "Veri kaydedilemedi", Toast.LENGTH_SHORT).show()
                                 }
                         }
                     }
-                }
-                .addOnFailureListener {
-                    Toast.makeText(this, "Küpe numarası kontrolü sırasında hata oluştu", Toast.LENGTH_SHORT).show()
                 }
         }
     }
