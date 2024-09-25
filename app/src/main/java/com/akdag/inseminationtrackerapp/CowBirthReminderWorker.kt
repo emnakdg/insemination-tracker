@@ -19,7 +19,7 @@ class CowBirthReminderWorker(appContext: Context, workerParams: WorkerParameters
         val earTag = inputData.getString("earTag") ?: return Result.failure()
 
         // Bildirimi oluştur
-        showNotification("Kuruya Çıkma Tarihi Yaklaşıyor", "Küpe Numarası: $earTag - Kuruya çıkarma tarihi yaklaşıyor!")
+        showNotification("Kuruya Çıkma Tarihi Yaklaşıyor", "Küpe Numarası: $earTag - Tohumlanalı 6,5 ay oldu, Kuruya çıkarma tarihi yaklaşıyor!")
         return Result.success()
     }
 

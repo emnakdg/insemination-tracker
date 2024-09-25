@@ -30,11 +30,7 @@ import android.os.Build
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import android.app.DatePickerDialog
-import androidx.compose.foundation.clickable
 import androidx.compose.ui.platform.LocalContext
-import android.util.Log
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.ui.input.pointer.pointerInput
 
 class CowDataActivity : ComponentActivity() {
 
@@ -72,6 +68,18 @@ class CowDataActivity : ComponentActivity() {
 
         var showDatePicker by remember { mutableStateOf(false) }
 
+
+        // Seçilen tarih için OutlinedTextField oluşturuluyor
+        Spacer(modifier = Modifier.height(16.dp))
+
+        OutlinedTextField(
+            value = selectedDate,
+            onValueChange = {},
+            label = { Text("Seçilen Tarih") },
+            readOnly = true, // Kullanıcı doğrudan yazamaz
+            modifier = Modifier.fillMaxWidth()
+        )
+
         // Butona tıkladığında takvimi gösterir
         Button(onClick = {
             showDatePicker = true
@@ -100,17 +108,6 @@ class CowDataActivity : ComponentActivity() {
                 }
             }.show()
         }
-
-        // Seçilen tarih için OutlinedTextField oluşturuluyor
-        Spacer(modifier = Modifier.height(16.dp))
-
-        OutlinedTextField(
-            value = selectedDate,
-            onValueChange = {},
-            label = { Text("Seçilen Tarih") },
-            readOnly = true, // Kullanıcı doğrudan yazamaz
-            modifier = Modifier.fillMaxWidth()
-        )
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
