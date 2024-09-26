@@ -74,7 +74,8 @@ fun HomeScreen(onLogout: () -> Unit) {
         // Aşı işlemleri butonu
         Button(
             onClick = {
-                // Henüz işlev eklenmedi, daha sonra eklenecek
+                val intent = Intent(context, VaccineActivity::class.java)
+                context.startActivity(intent)
             },
             modifier = Modifier
                 .fillMaxWidth()
