@@ -71,6 +71,7 @@ class CowDataActivity : ComponentActivity() {
     @Composable
     fun CowDataScreen() {
         val context = LocalContext.current // Composable içinde context almak için
+        var isExpanded by remember { mutableStateOf(false) }
 
         Scaffold(
             topBar = {
@@ -88,13 +89,13 @@ class CowDataActivity : ComponentActivity() {
                 )
             },
             content = { paddingValues ->
-                CowDataForm(paddingValues)
+                CowDataForm(paddingValues, isExpanded) { isExpanded = !isExpanded }
             }
         )
     }
 
     @Composable
-    fun CowDataForm(paddingValues: PaddingValues) {
+    fun CowDataForm(paddingValues: PaddingValues, isExpanded: Boolean, onExpandToggle: (Boolean) -> Unit) {
         var earTag by remember { mutableStateOf("") }
         var inseminationDate by remember { mutableStateOf("") }
         var cowsList by remember { mutableStateOf(listOf<Triple<String, List<InseminationRecord>, Boolean>>()) }
@@ -102,6 +103,7 @@ class CowDataActivity : ComponentActivity() {
         // Arama bölmesi için durum
         var searchQuery by remember { mutableStateOf("") }
         var filteredCowsList by remember { mutableStateOf(listOf<Triple<String, List<InseminationRecord>, Boolean>>()) }
+
         val context = LocalContext.current
 
         // Veri yenileme fonksiyonu
@@ -115,91 +117,100 @@ class CowDataActivity : ComponentActivity() {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues) // Scaffold'dan gelen paddingValues burada kullanılıyor
+                .padding(paddingValues)
                 .padding(16.dp)
         ) {
-            // Küpe numarası girişi
-            TextField(
-                value = earTag,
-                onValueChange = { earTag = it },
-                label = { Text("Küpe Numarası") },
-                modifier = Modifier.fillMaxWidth()
-            )
+
+            if (!isExpanded) {
+                // Form alanı - Form gizlenmeden önce gösterilir
+                TextField(
+                    value = earTag,
+                    onValueChange = { earTag = it },
+                    label = { Text("Küpe Numarası") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                DatePickerButton(
+                    label = "Tohumlama Tarihi",
+                    selectedDate = inseminationDate,
+                    onDateSelected = { inseminationDate = it }
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Button(
+                    onClick = {
+                        if (isValidDate(inseminationDate)) {
+                            addCowData(earTag, inseminationDate) {
+                                refreshCowData()
+                            }
+                        } else {
+                            Toast.makeText(context, "Geçerli bir tarih girin (gg.aa.yyyy)", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Veriyi Kaydet")
+                }
+            }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Takvim seçimi için DatePickerButton
-            DatePickerButton(
-                label = "Tohumlama Tarihi (gg.aa.yyyy)",
-                selectedDate = inseminationDate,
-                onDateSelected = { inseminationDate = it }
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Veri ekleme butonu
+            // Verileri gösterme ve yukarı kaydırma butonu
             Button(
                 onClick = {
-                    if (isValidDate(inseminationDate)) {
-                        addCowData(earTag, inseminationDate) {
-                            refreshCowData()
-                        }
-                    } else {
-
-                        Toast.makeText(context, "Geçerli bir tarih girin (gg.aa.yyyy)", Toast.LENGTH_SHORT).show()
-                    }
+                    refreshCowData()
+                    onExpandToggle(!isExpanded) // Butona basıldığında form görünürlüğü değişiyor
                 },
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Veriyi Kaydet")
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-
-
-            // Arama bölmesi
-            TextField(
-                value = searchQuery,
-                onValueChange = { query ->
-                    searchQuery = query
-                    filteredCowsList = if (query.isNotEmpty()) {
-                        cowsList.filter { it.first.lowercase(Locale.getDefault()).contains(query.lowercase(Locale.getDefault())) }
-                    } else {
-                        cowsList
-                    }
-                },
-                label = { Text("Küpe Numarasına Göre Ara") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Verileri göster butonu
-            Button(
-                onClick = { refreshCowData() },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Verileri Göster")
-            }
-
-            // Verilerin gösterildiği alan
-            CowDataDisplay(
-                cowsList = filteredCowsList,
-                onDelete = { earTag ->
-                    deleteCowData(earTag) { refreshCowData() }
-                },
-                onMarkFailed = { earTag, record ->
-                    markInseminationFailed(earTag, record) { refreshCowData() }
-                },
-                onMarkSuccessful = { earTag, record ->
-                    markInseminationSuccessful(earTag, record) { refreshCowData() }
+                if (isExpanded) {
+                    Text("Formu Göster")
+                } else {
+                    Text("Verileri Göster ve Yukarı Kaydır")
                 }
-            )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            if (isExpanded) {
+                // Arama ve veri gösterim alanı - Form gizlendiğinde gösterilir
+                TextField(
+                    value = searchQuery,
+                    onValueChange = { query ->
+                        searchQuery = query
+                        filteredCowsList = if (query.isNotEmpty()) {
+                            cowsList.filter { it.first.lowercase(Locale.getDefault()).contains(query.lowercase(Locale.getDefault())) }
+                        } else {
+                            cowsList
+                        }
+                    },
+                    label = { Text("Küpe Numarasına Göre Ara") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Verilerin gösterildiği alan
+                CowDataDisplay(
+                    cowsList = filteredCowsList,
+                    onDelete = { earTag ->
+                        deleteCowData(earTag) { refreshCowData() }
+                    },
+                    onMarkFailed = { earTag, record ->
+                        markInseminationFailed(earTag, record) { refreshCowData() }
+                    },
+                    onMarkSuccessful = { earTag, record ->
+                        markInseminationSuccessful(earTag, record) { refreshCowData() }
+                    }
+                )
+            }
         }
     }
 
-    // Takvim Seçimi İçin Buton
+
     @Composable
     fun DatePickerButton(
         label: String,
@@ -213,19 +224,18 @@ class CowDataActivity : ComponentActivity() {
         val month = calendar.get(Calendar.MONTH)
         val day = calendar.get(Calendar.DAY_OF_MONTH)
 
-        var showDatePicker by remember { mutableStateOf(false) }
-
-
-
-        Spacer(modifier = Modifier.height(16.dp))
+        var showDatePicker by remember { mutableStateOf(false) } // Takvim durumunu yöneten state
+        var lastSelectedDate by remember { mutableStateOf(selectedDate) } // İptal sonrası yeniden açma kontrolü
 
         OutlinedTextField(
-            value = selectedDate,
+            value = lastSelectedDate,
             onValueChange = {},
-            label = { Text("Seçilen Tarih") },
+            label = { Text(label) },
             readOnly = true,
             modifier = Modifier.fillMaxWidth()
         )
+
+        Spacer(modifier = Modifier.height(8.dp))
 
         Button(onClick = { showDatePicker = true }) {
             Text("Tarih Seç")
@@ -235,14 +245,26 @@ class CowDataActivity : ComponentActivity() {
             DatePickerDialog(
                 context,
                 { _, selectedYear: Int, selectedMonth: Int, selectedDayOfMonth: Int ->
-                    val formattedDate = String.format("%02d.%02d.%04d", selectedDayOfMonth, selectedMonth + 1, selectedYear)
+                    val formattedDate = String.format(
+                        "%02d.%02d.%04d",
+                        selectedDayOfMonth,
+                        selectedMonth + 1,
+                        selectedYear
+                    )
                     onDateSelected(formattedDate)
+                    lastSelectedDate = formattedDate
                     showDatePicker = false
                 },
                 year,
                 month,
                 day
-            ).show()
+            ).apply {
+                setOnCancelListener {
+                    // İptal durumunda takvimin tekrar açılabilmesi için reset
+                    showDatePicker = false
+                }
+                show()
+            }
         }
     }
 
@@ -411,7 +433,7 @@ class CowDataActivity : ComponentActivity() {
                             )
                             .addOnSuccessListener {
                                 // Schedule the notification after 195 days
-                                val delayInMillis = dryingOffDate.time - System.currentTimeMillis()
+                                val delayInMillis = TimeUnit.MINUTES.toMillis(1)
                                 // val delayInMillis = TimeUnit.MINUTES.toMillis(1)  // Test için 1 dakika gecikme
                                 // val delayInMillis = dryingOffDate.time - System.currentTimeMillis()  // orjinal 195
                                 enqueueCowBirthReminder(earTag, delayInMillis)

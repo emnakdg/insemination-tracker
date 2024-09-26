@@ -274,10 +274,11 @@ class VaccineActivity : ComponentActivity() {
         val month = calendar.get(Calendar.MONTH)
         val day = calendar.get(Calendar.DAY_OF_MONTH)
 
-        var showDatePicker by remember { mutableStateOf(false) }
+        var showDatePicker by remember { mutableStateOf(false) } // Takvim durumunu yöneten state
+        var lastSelectedDate by remember { mutableStateOf(selectedDate) } // İptal sonrası yeniden açma kontrolü
 
         OutlinedTextField(
-            value = selectedDate,
+            value = lastSelectedDate,
             onValueChange = {},
             label = { Text(label) },
             readOnly = true,
@@ -301,10 +302,19 @@ class VaccineActivity : ComponentActivity() {
                         selectedYear
                     )
                     onDateSelected(formattedDate)
+                    lastSelectedDate = formattedDate
                     showDatePicker = false
                 },
-                year, month, day
-            ).show()
+                year,
+                month,
+                day
+            ).apply {
+                setOnCancelListener {
+                    // İptal durumunda takvimin tekrar açılabilmesi için reset
+                    showDatePicker = false
+                }
+                show()
+            }
         }
     }
 
