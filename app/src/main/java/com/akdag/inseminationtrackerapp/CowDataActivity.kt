@@ -204,7 +204,9 @@ class CowDataActivity : ComponentActivity() {
                     },
                     onMarkSuccessful = { earTag, record ->
                         markInseminationSuccessful(earTag, record) { refreshCowData() }
-                    }
+                    },
+                    onMarkBirth = { earTag -> markCowAsGivenBirth(earTag) { refreshCowData() } },
+                    onMarkMiscarriage = { earTag -> markCowAsMiscarried(earTag) { refreshCowData() } } // Eksik olan parametre burada ekleniyor// Eksik olan parametre burada ekleniyor
                 )
             }
         }
@@ -300,8 +302,10 @@ class CowDataActivity : ComponentActivity() {
 
                         val lastRecord = inseminationRecords?.lastOrNull()
                         val lastStatus = lastRecord?.get("status") as? String
+                        val isPregnant = cowData["is_pregnant"] as? Boolean
 
-                        if (lastStatus == "Başarısız") {
+                        // Eğer inek gebe değilse, yeni tohumlama yapılmasına izin ver
+                        if (isPregnant == false || lastStatus == "Başarısız") {
                             saveNewInseminationRecord(cowDocument.id, earTag, inseminationDateStr) {
                                 onComplete()
                             }
@@ -309,6 +313,7 @@ class CowDataActivity : ComponentActivity() {
                             Toast.makeText(this, "Bu küpe numarasıyla daha önce başarılı bir tohumlama yapılmış!", Toast.LENGTH_SHORT).show()
                         }
                     } else {
+                        // İlk kez bu küpe numarasına ait veri giriliyorsa
                         val dateFormat = SimpleDateFormat("dd.MM.yyyy", Locale("tr", "TR"))
                         val inseminationDate: Date? = dateFormat.parse(inseminationDateStr)
 
@@ -339,6 +344,7 @@ class CowDataActivity : ComponentActivity() {
                 }
         }
     }
+
 
     // Verileri gösterme işlemi
     private fun fetchCowData(callback: (List<Triple<String, List<InseminationRecord>, Boolean>>) -> Unit) {
@@ -405,7 +411,6 @@ class CowDataActivity : ComponentActivity() {
         updateInseminationStatus(earTag, record, "Başarısız", false, null, onComplete)
     }
 
-    // Tohumlama başarılı işaretleme ve 195 gün sonrası kuruya çıkarma tarihi ekleme
     private fun markInseminationSuccessful(earTag: String, record: InseminationRecord, onComplete: () -> Unit) {
         val currentUser = auth.currentUser
 
@@ -428,18 +433,19 @@ class CowDataActivity : ComponentActivity() {
                                         hashMapOf("date" to record.date, "status" to "Başarılı")
                                     ),
                                     "is_pregnant" to true,
-                                    "drying_off_date" to Timestamp(dryingOffDate) // Kuruya çıkarma tarihi ekleniyor
+                                    "drying_off_date" to Timestamp(dryingOffDate), // Kuruya çıkarma tarihi ekleniyor
+                                    "is_birth_possible" to true // Doğum yaptı butonu için flag
                                 )
                             )
                             .addOnSuccessListener {
                                 // Schedule the notification after 195 days
                                 val delayInMillis = TimeUnit.MINUTES.toMillis(1)
                                 // val delayInMillis = TimeUnit.MINUTES.toMillis(1)  // Test için 1 dakika gecikme
-                                // val delayInMillis = dryingOffDate.time - System.currentTimeMillis()  // orjinal 195
+                                // val delayInMillis = expectedDeliveryDate.time - System.currentTimeMillis() // 195 gün
                                 enqueueCowBirthReminder(earTag, delayInMillis)
 
                                 Toast.makeText(this, "Tohumlama başarılı olarak işaretlendi", Toast.LENGTH_SHORT).show()
-                                onComplete()  // Başarılı işaretlendikten sonra listeyi yeniliyoruz
+                                onComplete()
                             }
                             .addOnFailureListener {
                                 Toast.makeText(this, "Tohumlama başarılı olarak işaretlenemedi", Toast.LENGTH_SHORT).show()
@@ -451,6 +457,102 @@ class CowDataActivity : ComponentActivity() {
                 }
         }
     }
+
+    private fun markCowAsGivenBirth(earTag: String, onComplete: () -> Unit) {
+        val currentUser = auth.currentUser
+
+        if (currentUser != null) {
+            db.collection("Cows")
+                .whereEqualTo("user_id", currentUser.uid)
+                .whereEqualTo("ear_tag", earTag)
+                .get()
+                .addOnSuccessListener { documents ->
+                    for (document in documents) {
+                        val birthDate = Date() // Şu anki tarih doğum tarihi olarak kaydediliyor.
+
+                        // Mevcut tohumlama kayıtlarını al
+                        val inseminationRecords = document["insemination_records"] as? List<Map<String, Any>> ?: emptyList()
+
+                        // Yeni doğum kaydı ekle
+                        val newBirthRecord = mapOf(
+                            "date" to Timestamp(birthDate),
+                            "status" to "Doğum Yaptı"
+                        )
+
+                        // Eski kayıtları koruyarak yeni doğum kaydını ekliyoruz
+                        val updatedRecords = inseminationRecords.toMutableList().apply {
+                            add(newBirthRecord)
+                        }
+
+                        // Veri tabanını güncelle
+                        db.collection("Cows").document(document.id)
+                            .update(
+                                mapOf(
+                                    "insemination_records" to updatedRecords, // Tüm kayıtları güncelle
+                                    "is_pregnant" to false, // İnek artık gebe değil
+                                    "is_birth_possible" to false // Doğum yaptıktan sonra bu seçenek kaybolur
+                                )
+                            )
+                            .addOnSuccessListener {
+                                Toast.makeText(this, "İnek doğum yaptı olarak işaretlendi", Toast.LENGTH_SHORT).show()
+                                onComplete()
+                            }
+                            .addOnFailureListener {
+                                Toast.makeText(this, "Doğum kaydı yapılamadı", Toast.LENGTH_SHORT).show()
+                            }
+                    }
+                }
+        }
+    }
+
+    private fun markCowAsMiscarried(earTag: String, onComplete: () -> Unit) {
+        val currentUser = auth.currentUser
+
+        if (currentUser != null) {
+            db.collection("Cows")
+                .whereEqualTo("user_id", currentUser.uid)
+                .whereEqualTo("ear_tag", earTag)
+                .get()
+                .addOnSuccessListener { documents ->
+                    for (document in documents) {
+                        val miscarriageDate = Date() // Şu anki tarih düşük tarihi olarak kaydediliyor.
+
+                        // Mevcut tohumlama kayıtlarını al
+                        val inseminationRecords = document["insemination_records"] as? List<Map<String, Any>> ?: emptyList()
+
+                        // Yeni düşük kaydı ekle
+                        val newMiscarriageRecord = mapOf(
+                            "date" to Timestamp(miscarriageDate),
+                            "status" to "Düşük Yaptı"
+                        )
+
+                        // Eski kayıtları koruyarak yeni düşük kaydını ekliyoruz
+                        val updatedRecords = inseminationRecords.toMutableList().apply {
+                            add(newMiscarriageRecord)
+                        }
+
+                        // Veri tabanını güncelle
+                        db.collection("Cows").document(document.id)
+                            .update(
+                                mapOf(
+                                    "insemination_records" to updatedRecords, // Tüm kayıtları güncelle
+                                    "is_pregnant" to false, // İnek artık gebe değil
+                                    "is_birth_possible" to false // Düşük yaptıktan sonra bu seçenek kaybolur
+                                )
+                            )
+                            .addOnSuccessListener {
+                                Toast.makeText(this, "İnek düşük yaptı olarak işaretlendi", Toast.LENGTH_SHORT).show()
+                                onComplete()
+                            }
+                            .addOnFailureListener {
+                                Toast.makeText(this, "Düşük kaydı yapılamadı", Toast.LENGTH_SHORT).show()
+                            }
+                    }
+                }
+        }
+    }
+
+
 
     // Bildirim için iş planlama
     private fun enqueueCowBirthReminder(earTag: String, delayInMillis: Long) {
@@ -515,10 +617,16 @@ class CowDataActivity : ComponentActivity() {
         cowsList: List<Triple<String, List<InseminationRecord>, Boolean>>,
         onDelete: (String) -> Unit,
         onMarkSuccessful: (String, InseminationRecord) -> Unit,
-        onMarkFailed: (String, InseminationRecord) -> Unit
+        onMarkFailed: (String, InseminationRecord) -> Unit,
+        onMarkBirth: (String) -> Unit,
+        onMarkMiscarriage: (String) -> Unit
     ) {
         LazyColumn(modifier = Modifier.padding(16.dp)) {
             items(cowsList) { (earTag, records, isPregnant) ->
+                // En son eklenen kaydı bul
+                val lastRecord = records.lastOrNull()
+                val status = lastRecord?.status ?: "Tohumlama Yapılmadı"
+
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -533,9 +641,16 @@ class CowDataActivity : ComponentActivity() {
                     ) {
                         Text(text = "Küpe Numarası: $earTag", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
 
-                        // Tohumlama kayıtlarını listeleme
+                        // Tohumlama ve doğum kayıtlarını listeleme
                         records.forEach { record ->
-                            Text(text = "Tohumlama Tarihi: ${SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(record.date)} - ${record.status}")
+                            Text(
+                                text = when (record.status) {
+                                    "Doğum Yaptı" -> "Doğum Tarihi: ${SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(record.date)}"
+                                    "Düşük Yaptı" -> "Düşük Tarihi: ${SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(record.date)}"
+                                    else -> "Tohumlama Tarihi: ${SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(record.date)} - ${record.status}"
+                                },
+                                style = MaterialTheme.typography.bodyMedium
+                            )
                         }
 
                         // Gebelik durumu
@@ -543,13 +658,13 @@ class CowDataActivity : ComponentActivity() {
 
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // Eğer ineğin gebe olduğu tespit edildiyse, kuruya çıkarma tarihi gösteriliyor
+                        // Eğer ineğin gebe olduğu tespit edildiyse, kuruya çıkarma tarihini göster
                         if (isPregnant) {
-                            val lastRecord = records.lastOrNull()
-                            if (lastRecord != null) {
+                            val lastSuccessfulRecord = records.lastOrNull { it.status == "Başarılı" }
+                            lastSuccessfulRecord?.let {
                                 val calendar = Calendar.getInstance()
-                                calendar.time = lastRecord.date
-                                calendar.add(Calendar.DAY_OF_YEAR, 195)
+                                calendar.time = it.date
+                                calendar.add(Calendar.DAY_OF_YEAR, 195) // 195 gün sonrası kuruya çıkarma tarihi
                                 val dryingOffDate = calendar.time
                                 val dateFormat = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
                                 Text(text = "Kuruya Çıkarma Tarihi: ${dateFormat.format(dryingOffDate)}", style = MaterialTheme.typography.bodyMedium)
@@ -558,40 +673,78 @@ class CowDataActivity : ComponentActivity() {
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Sil ve Başarılı/Başarısız butonları
-                        Row(
+                        // Dinamik Butonlar
+                        when (status) {
+                            "Tohumlama Yapıldı" -> {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    Button(
+                                        onClick = { onMarkSuccessful(earTag, lastRecord!!) },
+                                        modifier = Modifier.weight(1f),
+                                        colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.primary)
+                                    ) {
+                                        Text(text = "Başarılı")
+                                    }
+
+                                    Button(
+                                        onClick = { onMarkFailed(earTag, lastRecord!!) },
+                                        modifier = Modifier.weight(1.5f),
+                                        colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.secondary)
+                                    ) {
+                                        Text(text = "Başarısız")
+                                    }
+                                }
+                            }
+
+                            "Başarılı" -> {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    Button(onClick = { onMarkBirth(earTag) }) {
+                                        Text("Doğum Yaptı")
+                                    }
+                                    Button(onClick = { onMarkMiscarriage(earTag) }) {
+                                        Text("Düşük Yaptı")
+                                    }
+                                }
+                            }
+
+                            "Başarısız" -> {
+                                Text(text = "Yeni tohumlama işlemi bekleniyor...", style = MaterialTheme.typography.bodyLarge)
+                            }
+
+                            "Doğum Yaptı", "Düşük Yaptı" -> {
+                                Text(text = "Yeni tohumlama işlemi bekleniyor...", style = MaterialTheme.typography.bodyLarge)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        // Sil Butonu her zaman görünür
+                        Button(
+                            onClick = { onDelete(earTag) },
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp) // Butonlar arası boşluk eklendi
+                            colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.error)
                         ) {
-                            Button(
-                                onClick = { onDelete(earTag) },
-                                modifier = Modifier.weight(1f), // Butonları eşit genişlikte yapıyoruz
-                                colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.error)
-                            ) {
-                                Text(text = "Sil")
-                            }
-
-                            Button(
-                                onClick = { onMarkSuccessful(earTag, records.last()) },
-                                modifier = Modifier.weight(1.5f), // Butonları eşit genişlikte yapıyoruz
-                                colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.primary)
-                            ) {
-                                Text(text = "Başarılı")
-                            }
-
-                            Button(
-                                onClick = { onMarkFailed(earTag, records.last()) },
-                                modifier = Modifier.weight(1.7f), // Butonları eşit genişlikte yapıyoruz
-                                colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.secondary)
-                            ) {
-                                Text(text = "Başarısız")
-                            }
+                            Text(text = "Sil")
                         }
                     }
                 }
             }
         }
     }
+
+
+
+
+
+
+
+
+
 
 
     private fun deleteCowData(earTag: String, onComplete: () -> Unit) {
