@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import com.google.firebase.auth.FirebaseAuth
 import android.content.SharedPreferences
 import androidx.compose.ui.platform.LocalContext
+import androidx.work.WorkManager
 
 class HomeActivity : ComponentActivity() {
 
@@ -36,10 +37,14 @@ class HomeActivity : ComponentActivity() {
     }
 
     private fun logoutUser() {
+
+        // Kullanıcıya ait planlanmış bildirim işlerini iptal et (WorkManager)
+        WorkManager.getInstance(this).cancelAllWork()
+
         // Firebase'den çıkış yap
         auth.signOut()
 
-        // "Beni Hatırla" özelliği varsa onu temizle
+        // Kaydedilen kullanıcı bilgilerini (email, password) temizle
         sharedPreferences.edit().remove("email").remove("password").apply()
 
         // Giriş ekranına yönlendir
@@ -47,11 +52,13 @@ class HomeActivity : ComponentActivity() {
         startActivity(intent)
         finish() // Mevcut activity'yi kapat
     }
+
+
 }
 
 @Composable
 fun HomeScreen(onLogout: () -> Unit) {
-    var context = LocalContext.current
+    val context = LocalContext.current
     Column(
         modifier = Modifier
             .fillMaxSize()

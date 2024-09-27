@@ -32,29 +32,15 @@ class MainActivity : ComponentActivity() {
         // Firebase Auth instance
         auth = FirebaseAuth.getInstance()
 
-        // SharedPreferences kullanımı
-        val sharedPreferences = getSharedPreferences("UserPrefs", Context.MODE_PRIVATE)
-
-        // Otomatik giriş için kontrol
-        val savedEmail = sharedPreferences.getString("email", null)
-        val savedPassword = sharedPreferences.getString("password", null)
-
-        if (savedEmail != null && savedPassword != null) {
-            // Eğer email ve şifre kaydedildiyse, otomatik giriş yap
-            loginUser(savedEmail, savedPassword) { success, error ->
-                if (success) {
-                    navigateToHomePage()
-                } else {
-                    showMessage("Giriş başarısız: $error")
-                }
-            }
+        // Eğer kullanıcı oturumu açık ise direkt ana sayfaya yönlendir
+        if (auth.currentUser != null) {
+            navigateToHomePage()
         }
 
         setContent {
             var email by remember { mutableStateOf("") }
             var password by remember { mutableStateOf("") }
             var passwordVisible by remember { mutableStateOf(false) }
-            var rememberMe by remember { mutableStateOf(false) } // Beni hatırla seçeneği
 
             Column(
                 modifier = Modifier
@@ -90,7 +76,8 @@ class MainActivity : ComponentActivity() {
                     trailingIcon = {
                         val image = if (passwordVisible)
                             Icons.Filled.Visibility
-                        else Icons.Filled.VisibilityOff
+                        else
+                            Icons.Filled.VisibilityOff
 
                         IconButton(onClick = {
                             passwordVisible = !passwordVisible
@@ -104,29 +91,13 @@ class MainActivity : ComponentActivity() {
                     )
                 )
 
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically // Dikey olarak ortalama
-                ) {
-                    Checkbox(
-                        checked = rememberMe,
-                        onCheckedChange = { rememberMe = it }
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = "Beni Hatırla")
-                }
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // Giriş yap butonu
                 Button(
                     onClick = {
                         loginUser(email, password) { success, error ->
                             if (success) {
-                                if (rememberMe) {
-                                    // Eğer "Beni Hatırla" seçiliyse, kullanıcı bilgilerini kaydet
-                                    sharedPreferences.edit().putString("email", email).putString("password", password).apply()
-                                }
                                 navigateToHomePage()
                             } else {
                                 showMessage("Giriş başarısız: $error")
