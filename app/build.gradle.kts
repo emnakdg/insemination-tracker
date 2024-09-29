@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.akdag.inseminationtrackerapp"
-    compileSdk = 33
+    compileSdk = 34
 
     defaultConfig {
         applicationId = "com.akdag.inseminationtrackerapp"

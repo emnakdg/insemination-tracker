@@ -439,9 +439,9 @@ class CowDataActivity : ComponentActivity() {
                             )
                             .addOnSuccessListener {
                                 // Schedule the notification after 195 days
-                                val delayInMillis = TimeUnit.MINUTES.toMillis(1)
+                                val delayInMillis = dryingOffDate.time - System.currentTimeMillis()
                                 // val delayInMillis = TimeUnit.MINUTES.toMillis(1)  // Test için 1 dakika gecikme
-                                // val delayInMillis = expectedDeliveryDate.time - System.currentTimeMillis() // 195 gün
+                                // val delayInMillis = dryingOffDate.time - System.currentTimeMillis() // 195 gün
                                 enqueueCowBirthReminder(earTag, delayInMillis)
 
                                 Toast.makeText(this, "Tohumlama başarılı olarak işaretlendi", Toast.LENGTH_SHORT).show()
@@ -736,16 +736,6 @@ class CowDataActivity : ComponentActivity() {
             }
         }
     }
-
-
-
-
-
-
-
-
-
-
 
     private fun deleteCowData(earTag: String, onComplete: () -> Unit) {
         val currentUser = auth.currentUser
