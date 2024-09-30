@@ -31,12 +31,31 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import android.app.DatePickerDialog
 import android.content.Intent
+import android.graphics.Bitmap
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.ui.platform.LocalContext
+import android.provider.MediaStore
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 
 class CowDataActivity : ComponentActivity() {
 
+    private val REQUEST_IMAGE_CAPTURE = 1
+    private var capturedImageBitmap: Bitmap? = null
     private val db = FirebaseFirestore.getInstance()
     private lateinit var auth: FirebaseAuth
 
@@ -72,6 +91,8 @@ class CowDataActivity : ComponentActivity() {
     fun CowDataScreen() {
         val context = LocalContext.current // Composable içinde context almak için
         var isExpanded by remember { mutableStateOf(false) }
+        var earTag by remember { mutableStateOf("") }
+        var inseminationDate by remember { mutableStateOf("") }
 
         Scaffold(
             topBar = {
@@ -129,6 +150,34 @@ class CowDataActivity : ComponentActivity() {
                     label = { Text("Küpe Numarası") },
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                // Kamera ile çekim ve OCR işlemi için launcher
+                val takePictureLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.StartActivityForResult()
+                ) { result ->
+                    if (result.resultCode == RESULT_OK) {
+                        val imageBitmap = result.data?.extras?.get("data") as? Bitmap
+                        imageBitmap?.let {
+                            capturedImageBitmap = it
+                            processImageForTextRecognition(it) { recognizedText ->
+                                earTag = recognizedText // Küpe numarasını tanıdıkça güncelle
+                            }
+                        }
+                    }
+                }
+
+                // Kamera ikonu
+                IconButton(
+                    onClick = {
+                        checkCameraPermission(context) {
+                            val takePictureIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+                            takePictureLauncher.launch(takePictureIntent)
+                        }
+                    },
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    Icon(Icons.Filled.CameraAlt, contentDescription = "Kamera ile Numara Al", tint = Color.Gray)
+                }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
@@ -210,6 +259,35 @@ class CowDataActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    private fun checkCameraPermission(context: android.content.Context, onGranted: () -> Unit) {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.CAMERA), REQUEST_IMAGE_CAPTURE)
+        } else {
+            onGranted()
+        }
+    }
+
+    private fun processImageForTextRecognition(bitmap: Bitmap, onTextRecognized: (String) -> Unit) {
+        val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+        val image = InputImage.fromBitmap(bitmap, 0)
+
+        recognizer.process(image)
+            .addOnSuccessListener { visionText ->
+                val recognizedText = visionText.textBlocks.joinToString(separator = "") { block ->
+                    block.text.filter { it.isDigit() }  // Sadece rakamları alıyoruz
+                }
+
+                if (recognizedText.isNotEmpty()) {
+                    onTextRecognized(recognizedText)  // Tanınan sayıları geri döndürüyoruz
+                } else {
+                    Toast.makeText(this, "Numara tanınamadı", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .addOnFailureListener { e ->
+                Toast.makeText(this, "Metin tanıma başarısız oldu: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
     }
 
 

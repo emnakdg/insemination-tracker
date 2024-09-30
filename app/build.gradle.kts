@@ -53,6 +53,7 @@ android {
 dependencies {
 
     implementation("com.google.firebase:firebase-bom:31.2.3")
+    implementation("com.google.mlkit:text-recognition:16.0.0")
     implementation("androidx.compose.material:material-icons-extended:1.0.5")
     implementation("com.google.firebase:firebase-messaging:23.0.0")
     implementation("com.google.firebase:firebase-firestore-ktx")
