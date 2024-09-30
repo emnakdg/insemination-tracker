@@ -1,3 +1,63 @@
-/build
+# Gradle derleme dosyaları
+.gradle/
+build/
 
-google-services.json
+# IDEA dosyaları
+.idea/
+*.iml
+
+# Android Studio otomatik oluşturulan dosyalar
+local.properties
+app/build/
+
+# Log dosyaları
+*.log
+
+# Android emülatör ve cihaz dosyaları
+*.hprof
+*.lock
+*.ap_
+
+# İçerikle ilgili dosyalar
+captures/
+
+# Keystore dosyaları
+*.jks
+
+# Firebase konfigürasyon dosyası
+app/google-services.json
+
+# Node.js
+node_modules/
+
+# JetBrains dosyaları
+*.iws
+*.ipr
+
+# Proguard files
+proguard/
+
+# Artifacts
+*.apk
+*.aab
+
+# IntelliJ project files
+*.idea/workspace.xml
+*.idea/tasks.xml
+*.idea/dictionaries
+.idea/.name
+
+# Environment variables
+.env
+
+# macOS dosyaları
+.DS_Store
+
+# Windows dosyaları
+Thumbs.db
+
+# Linux dosyaları
+*~
+
+# Git metadata
+.git/
